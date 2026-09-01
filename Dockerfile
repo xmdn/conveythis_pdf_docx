@@ -39,6 +39,7 @@ RUN apk add --no-cache \
     && apk add --no-cache --virtual .build-deps \
         icu-dev \
         libzip-dev \
+        linux-headers \
         oniguruma-dev \
         $PHPIZE_DEPS \
     && docker-php-ext-install -j"$(nproc)" \
