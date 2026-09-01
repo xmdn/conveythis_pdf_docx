@@ -103,6 +103,9 @@ docker compose --profile test build test
 docker compose --profile test run --rm test php artisan test
 ```
 
+You should see same result as here:
+![alt text](image.png)
+
 Run one test class:
 
 ```bash
