@@ -1,0 +1,120 @@
+name: conveythis-file-vault
+
+services:
+  app:
+    build:
+      context: .
+      target: app
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - document-storage:/var/www/html/storage/app/private/documents
+      - framework-cache:/var/www/html/storage/framework
+    networks:
+      - file-vault
+
+  scheduler:
+    build:
+      context: .
+      target: app
+    env_file:
+      - .env
+    command: ["php", "artisan", "schedule:work", "--verbose", "--no-interaction"]
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - document-storage:/var/www/html/storage/app/private/documents
+      - framework-cache:/var/www/html/storage/framework
+    networks:
+      - file-vault
+
+  nginx:
+    build:
+      context: .
+      target: nginx
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    depends_on:
+      - app
+    networks:
+      - file-vault
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-file_vault}
+      MYSQL_USER: ${DB_USERNAME:-file_vault}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root-secret}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    ports:
+      - "33060:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - file-vault
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-file_vault}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-secret}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - file-vault
+
+  test:
+    profiles: ["test"]
+    build:
+      context: .
+      target: test
+    environment:
+      APP_ENV: testing
+      APP_KEY: base64:dGVzdC1hcHAta2V5LXNob3VsZC1iZS0zMmJ5dGVzISE=
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      DOCUMENT_DISK: documents
+    networks:
+      - file-vault
+
+volumes:
+  document-storage:
+  framework-cache:
+  mysql-data:
+  rabbitmq-data:
+
+networks:
+  file-vault:
+    driver: bridge
